@@ -33,7 +33,8 @@ import java.util.Collections
 private const val PORT = 8080
 private const val DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
 private const val MODEL = "deepseek-flash"
-private const val SYSTEM_PROMPT = "Ты — полезный ассистент"
+// Диалог с DeepSeek ведётся на английском, поэтому системный промпт тоже на английском
+private const val SYSTEM_PROMPT = "You are a helpful assistant"
 
 @Serializable
 data class ChatRequest(val prompt: String)
@@ -117,9 +118,18 @@ fun Application.module(history: MutableList<Message>, apiKey: String) {
                 return@post
             }
 
-            // Системный промпт + вся история + новый запрос пользователя
+            // Переводим запрос на английский — DeepSeek лучше работает с английским текстом.
+            // При ошибке перевода отправляем оригинал.
+            val promptEn = try {
+                translate(client, request.prompt, "en")
+            } catch (e: Exception) {
+                call.application.log.warn("Не удалось перевести запрос на английский (${e.message}) — отправляю оригинал")
+                request.prompt
+            }
+
+            // Системный промпт + вся история + новый запрос пользователя (всё на английском)
             val messages = synchronized(history) {
-                listOf(Message("system", SYSTEM_PROMPT)) + history.toList() + Message("user", request.prompt)
+                listOf(Message("system", SYSTEM_PROMPT)) + history.toList() + Message("user", promptEn)
             }
 
             val reply = try {
@@ -138,13 +148,21 @@ fun Application.module(history: MutableList<Message>, apiKey: String) {
                 return@post
             }
 
-            // Фиксируем оба сообщения в истории только после успешного ответа
+            // История хранится на английском: переведённый запрос + ответ DeepSeek
             synchronized(history) {
-                history.add(Message("user", request.prompt))
+                history.add(Message("user", promptEn))
                 history.add(Message("assistant", reply))
             }
 
-            call.respond(ChatResponse(reply))
+            // Пользователю отвечаем на русском; при ошибке перевода возвращаем английский оригинал
+            val replyRu = try {
+                translate(client, reply, "ru")
+            } catch (e: Exception) {
+                call.application.log.warn("Не удалось перевести ответ на русский (${e.message}) — возвращаю оригинал")
+                reply
+            }
+
+            call.respond(ChatResponse(replyRu))
         }
     }
 }
