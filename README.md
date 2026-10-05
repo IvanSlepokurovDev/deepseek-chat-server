@@ -18,12 +18,15 @@ HTTP-сервер на Kotlin + Ktor: проксирует диалог в DeepS
 
 ## Запуск
 
-1. Положите ключ API в файл `local.conf` в корне проекта (файл в git не попадает — он в `.gitignore`):
+1. Создайте файл `.env` в корне проекта (файл в git не попадает — он в `.gitignore`) и положите в него ключ API:
 
-```hocon
-deepseek {
-  apiKey = "sk-..."
-}
+```bash
+cp .env.example .env
+# затем отредактируйте .env и вставьте свой ключ
+```
+
+```dotenv
+DEEPSEEK_API_KEY=sk-...
 ```
 
 2. Запустите сервер:
@@ -32,7 +35,7 @@ deepseek {
 ./gradlew run
 ```
 
-Приоритет настроек: `local.conf` → переменная окружения `DEEPSEEK_API_KEY` (fallback) → `application.conf` из ресурсов.
+Приоритет настроек: файл `.env` → переменная окружения `DEEPSEEK_API_KEY`.
 
 ## Пример запроса
 

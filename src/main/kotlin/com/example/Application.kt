@@ -23,7 +23,6 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import com.typesafe.config.ConfigFactory
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -66,18 +65,28 @@ data class DeepSeekResponse(val choices: List<Choice> = emptyList())
 @Serializable
 data class Choice(val message: Message)
 
-fun main() {
-    // Ключ берём из local.conf (в git не попадает); fallback — application.conf из ресурсов,
-    // где значение может прийти из переменной окружения DEEPSEEK_API_KEY
-    val localFile = File("local.conf")
-    val config = if (localFile.exists()) {
-        ConfigFactory.parseFile(localFile).withFallback(ConfigFactory.load())
-    } else {
-        ConfigFactory.load()
-    }
+/**
+ * Читает простой .env-файл (KEY=VALUE, комментарии начинаются с #) без внешних зависимостей.
+ */
+private fun readDotEnv(file: File): Map<String, String> {
+    if (!file.exists()) return emptyMap()
+    return file.readLines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith('#') }
+        .mapNotNull { line ->
+            val sep = line.indexOf('=')
+            if (sep <= 0) null
+            else line.substring(0, sep).trim() to line.substring(sep + 1).trim().trim('"', '\'')
+        }
+        .toMap()
+}
 
-    val apiKey = config.getString("deepseek.apiKey").takeIf { it.isNotBlank() }
-        ?: error("Не задан ключ DeepSeek API: заполните deepseek.apiKey в local.conf или задайте DEEPSEEK_API_KEY")
+fun main() {
+    // Ключ берём из .env в корне проекта (файл в git не попадает) или из переменной
+    // окружения DEEPSEEK_API_KEY — в коде и в репозитории ключ не хранится.
+    val apiKey = readDotEnv(File(".env"))["DEEPSEEK_API_KEY"]?.takeIf { it.isNotBlank() }
+        ?: System.getenv("DEEPSEEK_API_KEY")?.takeIf { it.isNotBlank() }
+        ?: error("Не задан ключ DeepSeek API: создайте файл .env с DEEPSEEK_API_KEY=... или задайте переменную окружения DEEPSEEK_API_KEY")
 
     // История диалога хранится в памяти и сбрасывается при перезапуске сервера
     val history = Collections.synchronizedList(mutableListOf<Message>())
